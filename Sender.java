@@ -1,19 +1,32 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.lang.*;
+
+import java.nio.ByteBuffer;
 
 /*
 * the server
 *java Sender receiver_host_ip receiver_port file.pdf MWS MSS gamma pDrop
 pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
 */
+//===TESTS===
+//javac Sender 192.168.0.0 2008 8889 test0.pdf 500 100 4 0 0 0 0 0 0 0 100
+
+
 public class Sender {
-	
+	//number of bits in the header
+	//consists of sourceport# (16b) destport# (16b) seq# (32b) ack# (32b) flags(4b) window size (16b) checksum (16b)
+	private static final int STP_HEADER_SIZE = 132;	
+	//flags for STP header
+	private static final byte SYN_FLAG = 0x8;
+	private static final byte ACK_FLAG = 0x4;
+	private static final byte RST_FLAG = 0x2;
+	private static final byte FIN_FLAG = 0x1;
+	private static final byte NUL_FLAG = 0x0;
+
 	public static void main(String[] args) throws Exception
 		{
-			//number of bits in the header
-			//consists of sourceport# (16b) destport# (16b) seq# (32b) ack# (32b) flags(4b) window size (16b) checksum (16b)
-			private static final int STP_HEADER_SIZE = 132;
 			//receives 14 arguments in the format:
 			//java Sender receiver_host_ip receiver_port file.pdf MWS MSS gamma pDrop
 			//pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
@@ -66,205 +79,133 @@ public class Sender {
 	      	int sendBase = 0;
 
 	      	//initially not connected to receiver
-	      	bool connected = 0;
+	      	int connected = 0;
 
 			//processing loop
 			while (true) {
 				//if not connected to receiver, send first SYN
-				if(!connected) {
+				if(connected != 1) {
 					//creating of SYN segment
-					STPHeader(socket.getLocalPort(), destPort, nextSeqNum, ackNum, 1, 0, 0, 0, MWS, short checksum);
+					byte[] buf = STPHeader(socket.getLocalPort(), destPort, nextSeqNum, ackNum, SYN_FLAG, MWS, checksum(), "");
+					//send data back 
+					System.out.println("buff lenth is " + Integer.toString(buf.length));
+					System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
+					DatagramPacket reply = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+					socket.send(reply);
+					System.out.println("SYN sent");
 				}
 
 
-				//buffer to store incoming data
-				ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
-				//packet receivered from client, holds the incoming UDP packet
+				// //buffer to store incoming data
+				// ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
+				// //packet receivered from client, holds the incoming UDP packet
 
-				//datagram packet
-				DatagramPacket request = new DatagramPacket(buf,buf.length);
+				// //datagram packet
+				// DatagramPacket request = new DatagramPacket(buf,buf.length);
 
-				//store any request coming in from socket into datagrampacket
-				socket.receive(request);
-
-
-				if(datareceived from receiver) {
-					create STP segment with seq num nextSeqNum
-					if(timer not running) {
-						start timer
-					}
-					pass segment to IP
-					nextSeqNum = NextSeqNum + length(data);
-				}
-				//timer is associated with oldest non-acked segment 
-				else if(timerTimeout) {
-					retransmit not ack'd semgnets'
-					start timer
-				} 
-				else if(ack received, with ack field value of y) {
-					if (y> sendbase) {
-						sendbase = y;
-						if(there are currently any not yet acked segments){ 
-							start timer
-						}
-					}
-				}
-
-
-				//initialise STP header
-				//source port num
-				sourcePort = socket.getLocalPort();
-				//dest port num already initialised
-				//sequence number already initialised
-				if(ackNum > )
-				nextSeqNum = ackNum;
+				// //store any request coming in from socket into datagrampacket
+				// socket.receive(request);
 
 
 
-				//checks the acks and stuff
-				processData(request);
+				// if(datareceived from receiver) {
+				// 	create STP segment with seq num nextSeqNum
+				// 	if(timer not running) {
+				// 		start timer
+				// 	}
+				// 	pass segment to IP
+				// 	nextSeqNum = NextSeqNum + length(data);
+				// }
+				// //timer is associated with oldest non-acked segment 
+				// else if(timerTimeout) {
+				// 	retransmit not ack'd semgnets'
+				// 	start timer
+				// } 
+				// else if(ack received, with ack field value of y) {
+				// 	if (y> sendbase) {
+				// 		sendbase = y;
+				// 		if(there are currently any not yet acked segments){ 
+				// 			start timer
+				// 		}
+				// 	}
+				// }
 
-				//fill in buf with data to be sent back
-				getData(&buf)
 
-				//send data back 
-				DatagramPacket reply = new DatagramPacket(buf, buf.length, clientHost, clientPort);
-				socket.send(reply);
+				// //initialise STP header
+				// //source port num
+				// sourcePort = socket.getLocalPort();
+				// //dest port num already initialised
+				// //sequence number already initialised
+				// if(ackNum > )
+				// nextSeqNum = ackNum;
+
+
+
+				// //checks the acks and stuff
+				// processData(request);
+
+				// //fill in buf with data to be sent back
+				// getData(&buf)
+
+
 			}
 
 	}
 
-}
-class STPHeader(int sourcePort, int destPort, int seqNo, int ackNo, bool SYN, bool ACK, bool RST, bool FIN, int MWS, int checksum) {
-	public int sourcePort = sourcePort;
-	public int destPort = destPort;
-	public int seqNo = seqNo;
-	public int ackNo = ackNo;
-	public bool SYN = SYN;
-	public bool	ACK = ACK;
-	public bool RST = RST;
-	public bool FIN = FIN;
-	public int MWS = MWS;
-	public int checksum = checksum;
- }
+	private static byte[] STPHeader(int sourcePort, int destPort, int seqNo, int ackNo, byte flags, int MWS, int checksum, String stp_load) {
+		int length = 25 + stp_load.length();
+		ByteBuffer byteBuf = ByteBuffer.allocate(length);
+		byteBuf.putInt(sourcePort);
+		byteBuf.putInt(destPort);
+		byteBuf.putInt(seqNo);
+		byteBuf.putInt(ackNo);
+		//assume bool is a byte 
+		byteBuf.put(flags);
+		byteBuf.putInt(MWS);
+		byteBuf.putInt(checksum);
+		//byteBuf.put(stp_load);
 
-private static void handshake(DatagramPacket request) throws Exception
-{
-	
-}
+		//makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
+		byteBuf.flip();
+		System.out.println("here's what I got: " + byteBuf.toString());
+		System.out.println("newline");
+		byte[] buf = new byte[length];
+		System.out.println("bytelength: " + Integer.toString(buf.length));
+		byteBuf.get(buf);
 
-private static ByteBuffer handshake(DatagramPacket request) throws Exception
-{
-	
-}
+		return buf;
+	 }
 
-private static void PLDModel() throws Exception
-{
-
-
-//set to initially 1000ms i.e. 1second
-TimeoutInterval = 1000;
-	//when time timeout occurs, double the timeoutinterval
-	if(timeout) {
-		TimeoutInterval *= 2;
-	} else {
-		//otherwise, use the given formulae
-		//for calculating timeoutinterval
-		int SampleRTT = ??
-		int DevRTT = 0.75 * DevRTT + 0.25 * (SampleRTT - EstimatedRTT);
-		int EstimatedRTT = 0.875 * EstimatedRTT + 0.125 * SampleRTT;
-		int TimeoutInterval = EstimatedRTT + gamma * DevRTT;
-
+	private static int checksum() {
+		return 0;
 	}
 }
-/*
- * Server to process ping requests over UDP. 
- * The server sits in an infinite loop listening for incoming UDP packets. 
- * When a packet comes in, the server simply sends the encapsulated data back to the client.
- */
-
-// public class PingServer
+// private static void handshake(DatagramPacket request) throws Exception
 // {
-//    private static final double LOSS_RATE = 0.3;
-//    private static final int AVERAGE_DELAY = 100;  // milliseconds
+	
+// }
 
-//    public static void main(String[] args) throws Exception
-//    {
-//       // Get command line argument.
-//       if (args.length != 1) {
-//          System.out.println("Required arguments: port");
-//          return;
-//       }
-//       int port = Integer.parseInt(args[0]);
+// private static ByteBuffer handshake(DatagramPacket request) throws Exception
+// {
+	
+// }
 
-//       // Create random number generator for use in simulating 
-//       // packet loss and network delay.
-//       Random random = new Random();
+// private static void PLDModel() throws Exception
+// {
 
-//       // Create a datagram socket for receiving and sending UDP packets
-//       // through the port specified on the command line.
-//       DatagramSocket socket = new DatagramSocket(port);
 
-      // Processing loop.
-      while (true) {
-         // Create a datagram packet to hold incomming UDP packet.
-         DatagramPacket request = new DatagramPacket(new byte[1024], 1024);
+// //set to initially 1000ms i.e. 1second
+// TimeoutInterval = 1000;
+// 	//when time timeout occurs, double the timeoutinterval
+// 	if(timeout) {
+// 		TimeoutInterval *= 2;
+// 	} else {
+// 		//otherwise, use the given formulae
+// 		//for calculating timeoutinterval
+// 		int SampleRTT = ??
+// 		int DevRTT = 0.75 * DevRTT + 0.25 * (SampleRTT - EstimatedRTT);
+// 		int EstimatedRTT = 0.875 * EstimatedRTT + 0.125 * SampleRTT;
+// 		int TimeoutInterval = EstimatedRTT + gamma * DevRTT;
 
-         // Block until the host receives a UDP packet.
-         socket.receive(request);
-         
-         // Print the recieved data.
-         printData(request);
-
-         // Decide whether to reply, or simulate packet loss.
-         if (random.nextDouble() < LOSS_RATE) {
-            System.out.println("   Reply not sent.");
-            continue; 
-         }
-
-         // Simulate network delay.
-         Thread.sleep((int) (random.nextDouble() * 2 * AVERAGE_DELAY));
-
-         // Send reply.
-         InetAddress clientHost = request.getAddress();
-         int clientPort = request.getPort();
-         byte[] buf = request.getData();
-         DatagramPacket reply = new DatagramPacket(buf, buf.length, clientHost, clientPort);
-         socket.send(reply);
-
-         System.out.println("   Reply sent.");
-      }
-   }
-
-//    /* 
-//     * Print ping data to the standard output stream.
-//     */
-//    private static void printData(DatagramPacket request) throws Exception
-//    {
-//       // Obtain references to the packet's array of bytes.
-//       byte[] buf = request.getData();
-
-//       // Wrap the bytes in a byte array input stream,
-//       // so that you can read the data as a stream of bytes.
-//       ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-
-//       // Wrap the byte array output stream in an input stream reader,
-//       // so you can read the data as a stream of characters.
-//       InputStreamReader isr = new InputStreamReader(bais);
-
-//       // Wrap the input stream reader in a bufferred reader,
-//       // so you can read the character data a line at a time.
-//       // (A line is a sequence of chars terminated by any combination of \r and \n.) 
-//       BufferedReader br = new BufferedReader(isr);
-
-//       // The message data is contained in a single line, so read this line.
-//       String line = br.readLine();
-
-//       // Print host address and data received from it.
-//       System.out.println(
-//          "Received from " + 
-//          request.getAddress().getHostAddress() + 
-//          ": " +
-//          new String(line) );
-//    }
+// 	}
 // }

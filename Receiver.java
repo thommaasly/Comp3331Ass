@@ -7,20 +7,16 @@ import java.lang.*;
 * the client
 */
 
-java Receiver receiver_port file_r.pdf
+//use case: java Receiver receiver_port file_r.pdf
 
-1. receiver_port: the port number on which the Receiver will open a UDP socket for receiving
-datagrams from the Sender.
-2. file_r.pdf: the name of the pdf file into which the data sent by the sender should be stored (this is
-a copy of the file that is being transferred from sender to receiver).
-
+//LOOK AT TABLE 3.2 IN PAGE 250
 /*
  * Server to process ping requests over UDP. 
  * The server sits in an infinite loop listening for incoming UDP packets. 
  * When a packet comes in, the server simply sends the encapsulated data back to the client.
  */
 
-public class PingClient
+public class Receiver
 {
 
 	public static void main(String[] args) throws Exception
@@ -33,74 +29,28 @@ public class PingClient
 		//the port number which the Reeiver will open a UDP socket for receiving datagrams
 		int port = Integer.parseInt(args[0]);
 		//the name of the pdf file which the data hsould be stored
-		File f = new File(args[2]); //may need to check if this one works
-		
+		File f = new File(args[1]); //may need to check if this one works
 
 		// Create a datagram socket for sending UDP packets
-		// finds its own available port
-		DatagramSocket socket = new DatagramSocket();
-	 
-		//make the socket only block for 1 second	
-		socket.setSoTimeout(1000);
-		
-		ArrayList<Long> rttTimes = new ArrayList<Long>();
-//		long rttTimes = new long[];
-		
-		//send ping 10 times
-		for(int i = 0; i < 10; i++) {
-
-			//get the current time
-			long sendTime = System.currentTimeMillis();
-
-			//initalise the stuff to send in the datagrampacket, i.e. data being pinged
-			byte[] buf = new byte[1024];			
-			String data = "PING " + i + " " + sendTime + "\r\n";
-			//initialise the packet with 
-			DatagramPacket toSend = new DatagramPacket(buf, buf.length, host, port);
-  
-			// Create a datagram packet to hold incomming UDP packet.
-			DatagramPacket request = new DatagramPacket(new byte[1024], 1024);
-
-			// Block until the host receives a UDP packet.
-			socket.send(toSend);
-			
-			try{
+		// bind to port passed in as variable
+		DatagramSocket socket = new DatagramSocket(port);
+		System.out.println("socket is bound to port" + Integer.toString(port) + "and is connected: " + socket.isConnected());
+		// Create a datagram packet to hold incomming UDP packet.
+		DatagramPacket request = new DatagramPacket(new byte[1024], 1024);
+		while(true) {
+			System.out.println("asdf");
+//			try{
 				socket.receive(request);
+				System.out.println("socket received");
+				printData(request);
 				
-				long receiveTime = System.currentTimeMillis();
-				long rtt = receiveTime - sendTime;
-				rttTimes.add(rtt);
-				//printData(request);
-				//System.out.println("send time: " + sendTime + " receive time" + receiveTime);
-				System.out.println("ping to " + host + ", seq = " + i + ", rtt = " + rtt + " ms");
 
-			} catch (SocketTimeoutException e) {
-				System.out.println("ping to " + host + ", seq = " + i + ", timeout");			
+			// } catch (SocketTimeoutException e) {
+			// 	System.out.println("timeout");			
 
-			}
-			
-			//You will also need to report the minimum, maximum and the average RTTs of all packets received successfully at the end of your program's output. 
-			
+			// }
 		}
-	  if(rttTimes.size() > 0) {
-			long min = rttTimes.get(0);
-			long max = rttTimes.get(0);
-			long total = 0;
-	  
-			for (long value : rttTimes) {
-				if (value < min) {
-					 min = value;
-				} else if (value > max) {
-					 max = value;
-				}
-				total += value;
-			}
-			long average = total / rttTimes.size();
-			System.out.println("min: " + min + "ms, max: " + max + "ms, avg " + average + "ms");
-			
-	  } else {
-		  System.out.println("all packets timed out");
-	  }
+			 
 	}
 
 	/* 
