@@ -45,10 +45,7 @@ public class Receiver
 				printData(request);
 				
 
-			// } catch (SocketTimeoutException e) {
-			// 	System.out.println("timeout");			
 
-			// }
 		}
 			 
 	}

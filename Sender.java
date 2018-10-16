@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
 */
 //===TESTS===
-//javac Sender 192.168.0.0 2008 8889 test0.pdf 500 100 4 0 0 0 0 0 0 0 100
+//java Sender 192.168.0.0 2008 8889 test0.pdf 500 100 4 0 0 0 0 0 0 0 100
 
 
 public class Sender {
@@ -90,11 +90,16 @@ public class Sender {
 					//send data back 
 					System.out.println("buff lenth is " + Integer.toString(buf.length));
 					System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
-					DatagramPacket reply = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
-					socket.send(reply);
+					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+					socket.send(sendPac);
 					System.out.println("SYN sent");
-				}
+					connected = 1;
+					// try {
+						
+					// }
 
+				}
+				break;
 
 				// //buffer to store incoming data
 				// ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
@@ -167,10 +172,10 @@ public class Sender {
 
 		//makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
 		byteBuf.flip();
-		System.out.println("here's what I got: " + byteBuf.toString());
-		System.out.println("newline");
+		//System.out.println("here's what I got: " + byteBuf.toString());
+//System.out.println("newline");
 		byte[] buf = new byte[length];
-		System.out.println("bytelength: " + Integer.toString(buf.length));
+		//System.out.println("bytelength: " + Integer.toString(buf.length));
 		byteBuf.get(buf);
 
 		return buf;
