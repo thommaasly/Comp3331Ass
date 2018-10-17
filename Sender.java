@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
 */
 //===TESTS===
-//java Sender 192.168.0.0 2008 8889 test0.pdf 500 100 4 0 0 0 0 0 0 0 100
+//java Sender 127.0.0.1 2008 8889 test0.pdf 500 100 4 0 0 0 0 0 0 0 100
 
 
 public class Sender {
@@ -86,7 +86,7 @@ public class Sender {
 				//if not connected to receiver, send first SYN
 				if(connected != 1) {
 					//creating of SYN segment
-					byte[] buf = STPHeader(socket.getLocalPort(), destPort, nextSeqNum, ackNum, SYN_FLAG, MWS, checksum(), "");
+					byte[] buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, checksum(), "");
 					//send data back 
 					System.out.println("buff lenth is " + Integer.toString(buf.length));
 					System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
@@ -157,11 +157,10 @@ public class Sender {
 
 	}
 
-	private static byte[] STPHeader(int sourcePort, int destPort, int seqNo, int ackNo, byte flags, int MWS, int checksum, String stp_load) {
+	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int checksum, String stp_load) {
 		int length = 25 + stp_load.length();
 		ByteBuffer byteBuf = ByteBuffer.allocate(length);
-		byteBuf.putInt(sourcePort);
-		byteBuf.putInt(destPort);
+
 		byteBuf.putInt(seqNo);
 		byteBuf.putInt(ackNo);
 		//assume bool is a byte 

@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.lang.*;
+import java.nio.ByteBuffer;
 
 /*
 * the client
@@ -41,9 +42,20 @@ public class Receiver
 			System.out.println("asdf");
 //			try{
 				socket.receive(request);
-				System.out.println("socket received");
-				printData(request);
-				
+				System.out.println("socket received of length" + Integer.toString(request.getLength()));
+				//printData(request);
+				int length = request.getLength();
+				ByteBuffer byteBuf = ByteBuffer.wrap(request.getData())	;
+				int sourcePort = byteBuf.getInt();
+				System.out.println("the soruce port we got is: " + Integer.toString(sourcePort));
+		// byteBuf.putInt(sourcePort);
+		// byteBuf.putInt(destPort);
+		// byteBuf.putInt(seqNo);
+		// byteBuf.putInt(ackNo);
+		// //assume bool is a byte 
+		// byteBuf.put(flags);
+		// byteBuf.putInt(MWS);
+		// byteBuf.putInt(checksum);
 
 
 		}
