@@ -17,7 +17,7 @@ pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
 public class Sender {
 	//number of bits in the header
 	//consists of sourceport# (16b) destport# (16b) seq# (32b) ack# (32b) flags(4b) window size (16b) checksum (16b)
-	private static final int STP_HEADER_SIZE = 132;	
+	private static final int STP_HEADER_SIZE = 21;	
 	//flags for STP header
 	private static final byte SYN_FLAG = 0x8;
 	private static final byte ACK_FLAG = 0x4;
@@ -86,19 +86,42 @@ public class Sender {
 				//if not connected to receiver, send first SYN
 				if(connected != 1) {
 					//creating of SYN segment
-					byte[] buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, checksum(), "");
+					byte[] buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
 					//send data back 
 					System.out.println("buff lenth is " + Integer.toString(buf.length));
 					System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
 					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 					socket.send(sendPac);
 					System.out.println("SYN sent");
+
+
+
+					DatagramPacket recPac = new DatagramPacket(buf, buf.length);
+					socket.receive(recPac);
+					printData(recPac);
+					
+					if(getAckNo(recPac.getData()) == 1 && getFlags(recPac.getData()) == (SYN_FLAG | ACK_FLAG)) {
+						nextSeqNum = 1;
+						ackNum = 1;
+						buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), "");
+						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+						socket.send(sendPac);
+						System.out.println("ACK sent");
+
+					} else {
+						System.out.println("did not received SYN_ACK, ackNo: " + Integer.toString(getAckNo(recPac.getData()))
+						+ " getFlags: " + getFlags(recPac.getData()));
+
+					}
+
+
 					connected = 1;
 					// try {
 						
 					// }
 
 				}
+				System.out.println("Handshake complete");
 				break;
 
 				// //buffer to store incoming data
@@ -157,8 +180,15 @@ public class Sender {
 
 	}
 
-	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int checksum, String stp_load) {
-		int length = 25 + stp_load.length();
+	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, String stp_load) {
+		System.out.println("seqNo: " + Integer.toString(seqNo) +
+		" ackNo: " + Integer.toString(ackNo) +
+		" flags: " + Byte.toString(flags) +
+		" MWS: " + Integer.toString(MWS) +
+		" MSS: " + Integer.toString(MSS) + 
+		" checksum: " + Integer.toString(checksum));
+
+		int length = STP_HEADER_SIZE + stp_load.length();
 		ByteBuffer byteBuf = ByteBuffer.allocate(length);
 
 		byteBuf.putInt(seqNo);
@@ -166,13 +196,12 @@ public class Sender {
 		//assume bool is a byte 
 		byteBuf.put(flags);
 		byteBuf.putInt(MWS);
+		byteBuf.putInt(MSS);
 		byteBuf.putInt(checksum);
 		//byteBuf.put(stp_load);
 
 		//makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
 		byteBuf.flip();
-		//System.out.println("here's what I got: " + byteBuf.toString());
-//System.out.println("newline");
 		byte[] buf = new byte[length];
 		//System.out.println("bytelength: " + Integer.toString(buf.length));
 		byteBuf.get(buf);
@@ -183,7 +212,67 @@ public class Sender {
 	private static int checksum() {
 		return 0;
 	}
+
+		/* 
+	 * Print ping data to the standard output stream.
+	 */
+	private static void printData(DatagramPacket request) throws Exception
+	{
+		int length = request.getLength();
+		ByteBuffer byteBuf = ByteBuffer.wrap(request.getData())	;
+		int seqNo = byteBuf.getInt();
+		int ackNo = byteBuf.getInt();
+		byte flags = byteBuf.get();
+		int MWS = byteBuf.getInt();
+		int MSS = byteBuf.getInt();
+		int checksum = byteBuf.getInt();
+		System.out.println("Length: " + Integer.toString(length) +
+		 "seqNo: " + Integer.toString(seqNo) +
+		" ackNo: " + Integer.toString(ackNo) +
+		" flags: " + Byte.toString(flags) +
+		" MWS: " + Integer.toString(MWS) +
+		" MSS: " + Integer.toString(MSS) +
+		" checksum: " + Integer.toString(checksum));
+	}
+
+	private static int getSeqNo(byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.getInt();
+	}
+
+	private static int getAckNo (byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.getInt(4);
+	}
+	
+	private static byte getFlags (byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.get(8);
+	}
+	
+	private static int MWS (byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.getInt(9);
+	}
+
+	private static int MSS (byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.getInt(13);
+	}
+
+	private static int checksum(byte[] buf) 
+	{
+		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
+		return byteBuf.getInt(17);
+	}
+
 }
+
 // private static void handshake(DatagramPacket request) throws Exception
 // {
 	
