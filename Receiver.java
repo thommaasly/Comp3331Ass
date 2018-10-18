@@ -40,7 +40,9 @@ public class Receiver
 		int port = Integer.parseInt(args[0]);
 		//the name of the pdf file which the data hsould be stored
 		File f = new File(args[1]); //may need to check if this one works
-
+		//creates a file output stream to write to the file given in arguments
+		FileOutputStream fos = new FileOutputStream(f);
+      	fos.write(ACK_FLAG);
       	//initialise first sequence number;
       	int nextSeqNum = 0;
       	int ackNum = 0;
@@ -48,10 +50,14 @@ public class Receiver
 		// Create a datagram socket for sending UDP packets
 		// bind to port passed in as variable
 		DatagramSocket socket = new DatagramSocket(port);
-		System.out.println("socket is bound to port" + Integer.toString(port) + "and is connected: " + socket.isConnected());
+		System.out.println("socket is bound to port" + Integer.toString(port) + "and is connected: " + socket.isConnected() + "is closed" + socket.isClosed());
 		// Create a datagram packet to hold incomming UDP packet.
 		DatagramPacket request = new DatagramPacket(new byte[1024], 1024);
-		while(true) {
+
+
+
+
+		while(socket.isClosed() != true) {
 //			try{
 			socket.receive(request);
 			//storing data received inside variables
@@ -67,14 +73,15 @@ public class Receiver
 			int checksum = byteBuf.getInt();
 			byte[] payload = new byte[byteBuf.remaining()];
 			byteBuf.get(payload);
-				
+			
+			//establish connection with receiver	
 			if((flags & SYN_FLAG) != 0) {
 				System.out.println("we got a SYN_FLAG");
 				//reply with a SYN_ACK
 				//ackNum is the received seqNum+1
 				ackNum = seqNo + 1;
-				flags = SYN_FLAG | ACK_FLAG;
-				byte[] buf = STPHeader(nextSeqNum, ackNum, flags, MWS, MSS, checksum, "");
+				byte flag = SYN_FLAG | ACK_FLAG;
+				byte[] buf = STPHeader(nextSeqNum, ackNum, flag, MWS, MSS, checksum, "");
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
 
@@ -83,6 +90,32 @@ public class Receiver
 				if(getFlags(request.getData()) == ACK_FLAG) {
 					System.out.println("got ACK flag");
 				}
+			}
+			//terminate connection with sender
+			else if((flags & FIN_FLAG) != 0) {
+				System.out.println("closing connection");
+				//send ACK to FIN received
+				System.out.println("sending closing ACK_FLAG");
+				
+				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, "");
+				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
+				socket.send(sendPac);
+				System.out.println("sending closing FIN_FLAG");
+				//send FIN flag after ACK
+				buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum, "");
+				sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
+				socket.send(sendPac);
+
+				socket.receive(request);
+				if(getFlags(request.getData()) != ACK_FLAG) {
+					System.out.println("ERROR: failed to receive ACK_FLAG for close");
+				}
+				socket.close();
+				System.out.println("closed");
+			} 
+			//writing to file
+			else {
+				
 			}
 			printData(request);
 

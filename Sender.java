@@ -81,22 +81,48 @@ public class Sender {
 	      	//initially not connected to receiver
 	      	int connected = 0;
 
+	      	//processing loop runs while the file has not been completely sent
+	      	int finSending = 0;
+
+	      	byte[] buf;
+
+	      	//buffer of fixed type with no payload, used to receive segment from Receiver
+			byte[] recBuf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
+			//datagrampacket that stores the received packets from Receiver 
+			DatagramPacket recPac = new DatagramPacket(recBuf, recBuf.length);
+
+			//iniialisation of timer variables (in milliseconds)
+			float EstimatedRTT = 500;
+			float DevRTT = 250;
+
+
+
+			//set to initially 1000ms i.e. 1second
+	// 		float TimeoutInterval = 1000;
+	// //when time timeout occurs, double the timeoutinterval
+	// if(timeout) {
+	// 	TimeoutInterval *= 2;
+	// } else {
+	// 	//otherwise, use the given formulae
+	// 	//for calculating timeoutinterval
+	// 	int SampleRTT = ??
+	// 	int DevRTT = 0.75 * DevRTT + 0.25 * (SampleRTT - EstimatedRTT);
+	// 	int EstimatedRTT = 0.875 * EstimatedRTT + 0.125 * SampleRTT;
+	// 	float TimeoutInterval = EstimatedRTT + gamma * DevRTT;
+	// }
 			//processing loop
-			while (true) {
+			while (socket.isClosed() != true) {
 				//if not connected to receiver, send first SYN
 				if(connected != 1) {
 					//creating of SYN segment
-					byte[] buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
+					buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
 					//send data back 
-					System.out.println("buff lenth is " + Integer.toString(buf.length));
-					System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
+				//	System.out.println("buff lenth is " + Integer.toString(buf.length));
+				//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
 					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 					socket.send(sendPac);
-					System.out.println("SYN sent");
 
-
-
-					DatagramPacket recPac = new DatagramPacket(buf, buf.length);
+					//receive reply from Receiver
 					socket.receive(recPac);
 					printData(recPac);
 					
@@ -106,24 +132,63 @@ public class Sender {
 						buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), "");
 						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 						socket.send(sendPac);
-						System.out.println("ACK sent");
 
 					} else {
 						System.out.println("did not received SYN_ACK, ackNo: " + Integer.toString(getAckNo(recPac.getData()))
 						+ " getFlags: " + getFlags(recPac.getData()));
 
 					}
-
-
 					connected = 1;
-					// try {
-						
-					// }
+					System.out.println("Handshake complete");
 
 				}
-				System.out.println("Handshake complete");
-				break;
+				
+				System.out.println("send data here");
 
+
+
+
+
+
+
+
+
+
+
+				//after file has been sent
+				finSending = 1;
+				//initaiate close 
+				if(finSending == 1) {
+					System.out.println("start FIN, send FIN_FALG");
+					//send FIN glag to receiver
+					buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum(), "");
+					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+					socket.send(sendPac);
+
+					System.out.println("receive ack");
+					//receieve reply, expecting ACK_FLAG;
+					socket.receive(recPac);
+					if(getFlags(recPac.getData()) != ACK_FLAG) {
+						System.out.println("ERROR: Did not receive ACK_FLAG for FIN");
+					}
+					System.out.println("receive fin");
+					//receieve second reply, expecting FIN_FLAG
+					socket.receive(recPac);
+					if(getFlags(recPac.getData()) != FIN_FLAG) {
+						System.out.println("ERROR: Did not receive FIN_FLAG for FIN");
+					}
+
+					buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), "");
+					sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+					socket.send(sendPac);
+
+					//need to wait for some time before closing
+
+
+
+					socket.close();
+					System.out.println("Connection closed.");
+				}
 				// //buffer to store incoming data
 				// ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
 				// //packet receivered from client, holds the incoming UDP packet
@@ -287,18 +352,6 @@ public class Sender {
 // {
 
 
-// //set to initially 1000ms i.e. 1second
-// TimeoutInterval = 1000;
-// 	//when time timeout occurs, double the timeoutinterval
-// 	if(timeout) {
-// 		TimeoutInterval *= 2;
-// 	} else {
-// 		//otherwise, use the given formulae
-// 		//for calculating timeoutinterval
-// 		int SampleRTT = ??
-// 		int DevRTT = 0.75 * DevRTT + 0.25 * (SampleRTT - EstimatedRTT);
-// 		int EstimatedRTT = 0.875 * EstimatedRTT + 0.125 * SampleRTT;
-// 		int TimeoutInterval = EstimatedRTT + gamma * DevRTT;
 
 // 	}
 // }
