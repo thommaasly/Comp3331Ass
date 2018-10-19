@@ -391,12 +391,21 @@ public class Sender {
 			socket.send(sendPac);
 			socket.send(sendPac);
 		}
-		//  else if(random.nextFloat() < pCorr) {
-		// 	//corrupt the packet
-		// 	error = PCOR;
-									// 	buf ^ (1 << (STP_HEADER_SIZE + MSS));
+		 else if(random.nextFloat() < pCorr) {
+			//corrupt the packet
+			error = PCOR;
 
-		// } else if(random.nextFloat() < pOrder) {
+			byte[] oldBuffer = Arrays.copyOf(sendPac.getData(), sendPac.getLength());
+
+			invertBit(sendPac.getData(),sendPac.getLength()); 
+			if(Arrays.equals(oldBuffer, sendPac.getData()) == true) {
+				System.out.println("invertBit does work");
+			} else {
+				System.out.println("invertBit does not work");
+			}
+
+		}
+		// else if(random.nextFloat() < pOrder) {
 		// 	//reorder the packet
 									// 	int __ = random.nextInt(maxOrder) + 1;
 
@@ -412,6 +421,27 @@ public class Sender {
 
 
 		return error;
+	}
+
+	private static void invertBit(byte[] segment, int length) {
+		segment[0] = (byte) (segment[0] ^ (1 << (length -1)));
+
+	
+		// //use a bytebuffer representation of the data
+		// ByteBuffer byteBuf = ByteBuffer.wrap(segment);
+		// //convert the bytebuffer to an integer 
+		// IntBuffer intBuf = byteBuf.asIntBuffer();
+		// //convert the intBuffer into an integer array
+
+
+		// //makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
+		// // byteBuf.flip();
+		// // byte[] holder = new byte[STP_HEADER_SIZE];
+		// // //System.out.println("bytelength: " + Integer.toString(buf.length));
+		// // byteBuf.get(holder);
+		// // byte[] buf = new byte[length];
+		// // System.arraycopy(holder, 0, buf, 0, holder.length);
+
 	}
 
 	private static int checksum() {
