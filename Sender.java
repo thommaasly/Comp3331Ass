@@ -87,7 +87,9 @@ public class Sender {
 	      	byte[] buf;
 
 	      	//buffer of fixed type with no payload, used to receive segment from Receiver
-			byte[] recBuf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
+			byte[] recBuf = new byte[STP_HEADER_SIZE];
+			
+			//byte[] recBuf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
 			//datagrampacket that stores the received packets from Receiver 
 			DatagramPacket recPac = new DatagramPacket(recBuf, recBuf.length);
 
@@ -95,7 +97,8 @@ public class Sender {
 			float EstimatedRTT = 500;
 			float DevRTT = 250;
 
-
+			//Used to read in data from given file
+			FileInputStream fis = new FileInputStream(f);
 
 			//set to initially 1000ms i.e. 1second
 	// 		float TimeoutInterval = 1000;
@@ -115,7 +118,7 @@ public class Sender {
 				//if not connected to receiver, send first SYN
 				if(connected != 1) {
 					//creating of SYN segment
-					buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), "");
+					buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), 0);
 					//send data back 
 				//	System.out.println("buff lenth is " + Integer.toString(buf.length));
 				//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
@@ -129,7 +132,7 @@ public class Sender {
 					if(getAckNo(recPac.getData()) == 1 && getFlags(recPac.getData()) == (SYN_FLAG | ACK_FLAG)) {
 						nextSeqNum = 1;
 						ackNum = 1;
-						buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), "");
+						buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), 0);
 						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 						socket.send(sendPac);
 
@@ -141,27 +144,12 @@ public class Sender {
 					connected = 1;
 					System.out.println("Handshake complete");
 
-				}
-				
-				System.out.println("send data here");
-
-
-
-
-
-
-
-
-
-
-
-				//after file has been sent
-				finSending = 1;
+				} 
 				//initaiate close 
-				if(finSending == 1) {
+				else if(finSending == 1) {
 					System.out.println("start FIN, send FIN_FALG");
 					//send FIN glag to receiver
-					buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum(), "");
+					buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum(), 0);
 					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 					socket.send(sendPac);
 
@@ -178,7 +166,7 @@ public class Sender {
 						System.out.println("ERROR: Did not receive FIN_FLAG for FIN");
 					}
 
-					buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), "");
+					buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum(), 0);
 					sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 					socket.send(sendPac);
 
@@ -189,6 +177,40 @@ public class Sender {
 					socket.close();
 					System.out.println("Connection closed.");
 				}
+
+
+				else if(fis.available() != 0)
+				{
+					System.out.println("send data here");
+					//FileInputStream fis = new FileInputStream(f);
+					//while there are still bytes left to send
+					nextSeqNum = getAckNo(recPac.getData());
+					ackNum = getSeqNo(recPac.getData()) + 1;
+					buf = STPHeader(nextSeqNum, ackNum, SYN_FLAG, MWS, MSS, checksum(), MSS);
+					//puts MSS bytes into buf at an offset of STP_HEADER_LENGTH
+					int read = fis.read(buf, STP_HEADER_SIZE, MSS);
+					//initiates the packet for sending
+					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+					//sends the packet
+					socket.send(sendPac);
+
+					socket.receive(recPac);
+
+
+				} else {
+					//after file has been sent
+					System.out.println("clsoe the file setting finSending to 1");
+					fis.close();
+					finSending = 1;
+				}
+
+
+
+
+
+
+
+
 				// //buffer to store incoming data
 				// ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
 				// //packet receivered from client, holds the incoming UDP packet
@@ -245,15 +267,12 @@ public class Sender {
 
 	}
 
-	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, String stp_load) {
-		System.out.println("seqNo: " + Integer.toString(seqNo) +
-		" ackNo: " + Integer.toString(ackNo) +
-		" flags: " + Byte.toString(flags) +
-		" MWS: " + Integer.toString(MWS) +
-		" MSS: " + Integer.toString(MSS) + 
-		" checksum: " + Integer.toString(checksum));
-
-		int length = STP_HEADER_SIZE + stp_load.length();
+	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, int stp_load_size) {
+		
+		if(stp_load_size != 0 || stp_load_size != MSS) {
+			System.out.println("load length is not 0 or MSS: " + Integer.toString(stp_load_size));
+		}
+		int length = STP_HEADER_SIZE + stp_load_size;
 		ByteBuffer byteBuf = ByteBuffer.allocate(length);
 
 		byteBuf.putInt(seqNo);
@@ -267,9 +286,11 @@ public class Sender {
 
 		//makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
 		byteBuf.flip();
-		byte[] buf = new byte[length];
+		byte[] holder = new byte[STP_HEADER_SIZE];
 		//System.out.println("bytelength: " + Integer.toString(buf.length));
-		byteBuf.get(buf);
+		byteBuf.get(holder);
+		byte[] buf = new byte[length];
+		System.arraycopy(holder, 0, buf, 0, holder.length);
 
 		return buf;
 	 }

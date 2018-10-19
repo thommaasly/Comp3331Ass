@@ -41,8 +41,9 @@ public class Receiver
 		//the name of the pdf file which the data hsould be stored
 		File f = new File(args[1]); //may need to check if this one works
 		//creates a file output stream to write to the file given in arguments
-		FileOutputStream fos = new FileOutputStream(f);
-      	fos.write(ACK_FLAG);
+		//set so that writes willl append to the file rather than make a new file
+		FileOutputStream fos = new FileOutputStream(f,true);
+      	
       	//initialise first sequence number;
       	int nextSeqNum = 0;
       	int ackNum = 0;
@@ -51,13 +52,17 @@ public class Receiver
 		// bind to port passed in as variable
 		DatagramSocket socket = new DatagramSocket(port);
 		System.out.println("socket is bound to port" + Integer.toString(port) + "and is connected: " + socket.isConnected() + "is closed" + socket.isClosed());
-		// Create a datagram packet to hold incomming UDP packet.
-		DatagramPacket request = new DatagramPacket(new byte[1024], 1024);
 
+		//initiate MSS will a starting value of 0
+		int MSS = 0;
 
-
-
+		//handshake completed or not
+		int handshake = 0;
 		while(socket.isClosed() != true) {
+						
+			// Create a datagram packet to hold incomming UDP packet.
+			DatagramPacket request = new DatagramPacket(new byte[STP_HEADER_SIZE + MSS], STP_HEADER_SIZE + MSS);
+
 //			try{
 			socket.receive(request);
 			//storing data received inside variables
@@ -69,19 +74,21 @@ public class Receiver
 			int ackNo = byteBuf.getInt();
 			byte flags = byteBuf.get();
 			int MWS = byteBuf.getInt();
-			int MSS = byteBuf.getInt();
+			MSS = byteBuf.getInt();
 			int checksum = byteBuf.getInt();
 			byte[] payload = new byte[byteBuf.remaining()];
 			byteBuf.get(payload);
-			
-			//establish connection with receiver	
-			if((flags & SYN_FLAG) != 0) {
+
+
+			//establish connection with receiver	 - HANDSHAKE
+			if((flags & SYN_FLAG) != 0 && handshake != 1) {
 				System.out.println("we got a SYN_FLAG");
 				//reply with a SYN_ACK
 				//ackNum is the received seqNum+1
 				ackNum = seqNo + 1;
+				nextSeqNum = 0;
 				byte flag = SYN_FLAG | ACK_FLAG;
-				byte[] buf = STPHeader(nextSeqNum, ackNum, flag, MWS, MSS, checksum, "");
+				byte[] buf = STPHeader(nextSeqNum, ackNum, flag, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
 
@@ -90,6 +97,7 @@ public class Receiver
 				if(getFlags(request.getData()) == ACK_FLAG) {
 					System.out.println("got ACK flag");
 				}
+				handshake = 1;
 			}
 			//terminate connection with sender
 			else if((flags & FIN_FLAG) != 0) {
@@ -97,12 +105,12 @@ public class Receiver
 				//send ACK to FIN received
 				System.out.println("sending closing ACK_FLAG");
 				
-				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, "");
+				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
 				System.out.println("sending closing FIN_FLAG");
 				//send FIN flag after ACK
-				buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum, "");
+				buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum, 0);
 				sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
 
@@ -115,7 +123,19 @@ public class Receiver
 			} 
 			//writing to file
 			else {
-				
+				//		FileOutputStream fos = new FileOutputStream(f);
+
+				//got the data from request, need to write it in
+				fos.write(request.getData(), STP_HEADER_SIZE, MSS);
+
+				//update syn, ack variables
+				nextSeqNum = ackNo;
+				ackNum = seqNo + MSS;
+
+				//send ack for data written
+				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
+				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
+				socket.send(sendPac);
 			}
 			printData(request);
 
@@ -146,8 +166,12 @@ public class Receiver
 		" checksum: " + Integer.toString(checksum));
 	}
 
-	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, String stp_load) {
-		int length = STP_HEADER_SIZE + stp_load.length();
+	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, int stp_load_size) {
+		
+		if(stp_load_size != 0 || stp_load_size != MSS) {
+			System.out.println("load length is not 0 or MSS: " + Integer.toString(stp_load_size));
+		}
+		int length = STP_HEADER_SIZE + stp_load_size;
 		ByteBuffer byteBuf = ByteBuffer.allocate(length);
 
 		byteBuf.putInt(seqNo);
@@ -161,8 +185,6 @@ public class Receiver
 
 		//makes it so the index of byteBuf goes back to 0 with limit at w/e index was at. allows get
 		byteBuf.flip();
-		//System.out.println("here's what I got: " + byteBuf.toString());
-//System.out.println("newline");
 		byte[] buf = new byte[length];
 		//System.out.println("bytelength: " + Integer.toString(buf.length));
 		byteBuf.get(buf);
