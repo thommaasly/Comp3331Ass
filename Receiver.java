@@ -42,7 +42,7 @@ public class Receiver
 		File f = new File(args[1]); //may need to check if this one works
 		//creates a file output stream to write to the file given in arguments
 		//set so that writes willl append to the file rather than make a new file
-		FileOutputStream fos = new FileOutputStream(f,true);
+		FileOutputStream fos = new FileOutputStream(f);
       	
       	//initialise first sequence number;
       	int nextSeqNum = 0;
@@ -58,6 +58,9 @@ public class Receiver
 
 		//handshake completed or not
 		int handshake = 0;
+
+		//indicates if transmission has started, used for if first segment gets duplicated
+		int startTrans = 0;
 		while(socket.isClosed() != true) {
 						
 			// Create a datagram packet to hold incomming UDP packet.
@@ -121,21 +124,40 @@ public class Receiver
 				socket.close();
 				System.out.println("closed");
 			} 
-			//writing to file
+			//receiving data
 			else {
-				//		FileOutputStream fos = new FileOutputStream(f);
+				
+				//when seqNo is not matching, from Duplicate packets
+				if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
+					System.out.println("got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
+				
+					//resend lack ack that was proper
+					byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
+					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
+					socket.send(sendPac);
+				}
+				else {
+					System.out.println("writing data");
+					System.out.println("got as wanted seqNo: " + Integer.toString(seqNo) );
 
-				//got the data from request, need to write it in
-				fos.write(request.getData(), STP_HEADER_SIZE, MSS);
+					//writes the first segment which has seqNo 1 which is the same as during handshake (not to be confused with duplicate)
+					if(startTrans == 0) {
+						startTrans = 1;
+					}
 
-				//update syn, ack variables
-				nextSeqNum = ackNo;
-				ackNum = seqNo + MSS;
+					//when the correct segment is receieved
+					//got the data from request, need to write it in
+					fos.write(request.getData(), STP_HEADER_SIZE, MSS);
 
-				//send ack for data written
-				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
-				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
-				socket.send(sendPac);
+					//update syn, ack variables
+					nextSeqNum = ackNo;
+					ackNum = seqNo + request.getLength() - STP_HEADER_SIZE;
+
+					//send ack for data written
+					byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
+					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
+					socket.send(sendPac);
+				}
 			}
 			printData(request);
 
