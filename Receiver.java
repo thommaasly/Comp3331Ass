@@ -89,7 +89,7 @@ public class Receiver
 				//reply with a SYN_ACK
 				//ackNum is the received seqNum+1
 				ackNum = seqNo + 1;
-				nextSeqNum = 0;
+				nextSeqNum = ackNo + 1;
 				byte flag = SYN_FLAG | ACK_FLAG;
 				byte[] buf = STPHeader(nextSeqNum, ackNum, flag, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
@@ -107,7 +107,7 @@ public class Receiver
 				System.out.println("closing connection");
 				//send ACK to FIN received
 				System.out.println("sending closing ACK_FLAG");
-				
+				ackNum = seqNo + 1;
 				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);

@@ -122,7 +122,7 @@ public class Sender {
 	
 			//creating of SYN segment
 			buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, checksum(), 0);
-			//send data back 
+			//rece back 
 		//	System.out.println("buff lenth is " + Integer.toString(buf.length));
 		//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
 			DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
@@ -131,10 +131,10 @@ public class Sender {
 			//receive reply from Receiver
 			socket.receive(recPac);
 			printData(recPac);
-			
+			sAckNum = getAckNum(recPac.getData());
 			if(getAckNum(recPac.getData()) == 1 && getFlags(recPac.getData()) == (SYN_FLAG | ACK_FLAG)) {
 				sSeqNum = 1;
-				sAckNum = 1;
+				
 				buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, checksum(), 0);
 				sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 				socket.send(sendPac);
@@ -144,12 +144,17 @@ public class Sender {
 				+ " getFlags: " + getFlags(recPac.getData()));
 			}
 			connected = 1;
+
 			//Used to read in data from given file
 			FileInputStream fis = new FileInputStream(f);
 			System.out.println("Handshake complete, file input stream created");
 			//end Handshake
 
+			//determines if a timeout has occurred
+			int timeout = 0;
 
+			//determines if a duplicate pack was received
+			int dupPac = 0;
 			//checks if a segment has been retransmitted
 			int retransmitted = 1;
 			//Send the data, processing loop
@@ -167,23 +172,29 @@ public class Sender {
 						System.out.println("an error has occurred" + rAckNum + "ssn: " + sSeqNum);
 					}
 
-					if(rAckNum == sSeqNum && sSeqNum != 1) {
+					if(timeout == 1) {
 						//for when Packet is dropped
-						System.out.println("the error that occurred was packet drop , file has length" + Long.toString(f.length()));
+						System.out.println("the error that occurred was packet drop");
 						//resend the packet
 						int error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, sendPac, socket);
-						//break;
 						retransmitted = 1;
-					} else if (rAckNum < sSeqNum) {
-						//just received a duplicate ack because accidentally resent, disregard and continue
+						
+					} else if(rAckNum == sSeqNum && sSeqNum != 1) {
+						//just received a duplicate ack because accidentally resent, do nothing in response
 						System.out.println("received a duplicate ack");
-						continue;
+						dupPac = 1;
 					} else {
+						System.out.println("Noerror");
+
 						//for the final segment that isn't going to be of size MSS
 						if(fis.available() < MSS) {
 							MSS = fis.available();
 						}
-						sSeqNum = rAckNum;
+						//increase sSeqNum based on segment acked.
+						//only doesn't change when error occurred previously
+						if(sSeqNum < rAckNum) {
+							sSeqNum = rAckNum;
+						}
 						//acknumber of the sender is always 1 except for handshake and FIN
 						sAckNum = rSeqNum;
 						buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, checksum(), MSS);
@@ -200,14 +211,17 @@ public class Sender {
 					} 
 
 					//receieve the packet
-					System.out.println("receivingigg packet wait: " + Integer.toString(socket.getSoTimeout()));
-					socket.receive(recPac);
+					//System.out.println("receivingigg packet wait: " + Integer.toString(socket.getSoTimeout()));
+					
+					
+						socket.receive(recPac);
+				
 					long receiveTime = System.currentTimeMillis();
 					System.out.println("sent:");
 					printData(sendPac);
 					System.out.println("Received:");
 					printData(recPac);
-					//recalculate timeoutinterval if segment just sent has not been transmitte before
+				//	recalculate timeoutinterval if segment just sent has not been transmitte before
 					if(retransmitted == 0) {
 						// //set RTT times
 						// double sampleRTT = receiveTime - sendTime;
@@ -222,6 +236,7 @@ public class Sender {
 
 				} 	catch (SocketTimeoutException e) {
 					System.out.println("The socket timed out");
+					timeout = 1;
 				}
 
 				
@@ -242,6 +257,10 @@ public class Sender {
 			System.out.println("receive ack");
 			//receieve reply, expecting ACK_FLAG;
 			socket.receive(recPac);
+								System.out.println("sent:");
+					printData(sendPac);
+					System.out.println("Received:");
+					printData(recPac);
 			if(getFlags(recPac.getData()) != ACK_FLAG) {
 				System.out.println("ERROR: Did not receive ACK_FLAG for FIN");
 			}
@@ -251,7 +270,7 @@ public class Sender {
 			if(getFlags(recPac.getData()) != FIN_FLAG) {
 				System.out.println("ERROR: Did not receive FIN_FLAG for FIN");
 			}
-
+			sSeqNum += 1;
 			buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, checksum(), 0);
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
@@ -259,7 +278,10 @@ public class Sender {
 			//need to wait for some time before closing
 
 
-
+					System.out.println("Received:");
+					printData(recPac);
+					System.out.println("sent:");
+					printData(sendPac);
 			socket.close();
 			System.out.println("file had size: " + Long.toString(f.length()));
 			System.out.println("Connection closed.");
