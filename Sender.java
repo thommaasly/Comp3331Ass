@@ -119,9 +119,10 @@ public class Sender {
 
 
 			//Handshake
-	
+			//Used to read in data from given file
+			FileInputStream fis = new FileInputStream(f);	
 			//creating of SYN segment
-			buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, checksum(), 0);
+			buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, 0, 0, fis);
 			//rece back 
 		//	System.out.println("buff lenth is " + Integer.toString(buf.length));
 		//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
@@ -135,7 +136,7 @@ public class Sender {
 			if(getAckNum(recPac.getData()) == 1 && getFlags(recPac.getData()) == (SYN_FLAG | ACK_FLAG)) {
 				sSeqNum = 1;
 				
-				buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, checksum(), 0);
+				buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, 0, 0, fis);
 				sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 				socket.send(sendPac);
 
@@ -145,8 +146,7 @@ public class Sender {
 			}
 			connected = 1;
 
-			//Used to read in data from given file
-			FileInputStream fis = new FileInputStream(f);
+
 			System.out.println("Handshake complete, file input stream created");
 			//end Handshake
 
@@ -157,6 +157,10 @@ public class Sender {
 			int dupPac = 0;
 			//checks if a segment has been retransmitted
 			int retransmitted = 1;
+
+			//size of payload (excluding header)			
+			int stp_load_size = 0;
+
 			//Send the data, processing loop
 			while(fis.available() != 0)
 			{
@@ -188,7 +192,9 @@ public class Sender {
 
 						//for the final segment that isn't going to be of size MSS
 						if(fis.available() < MSS) {
-							MSS = fis.available();
+							stp_load_size = fis.available();
+						} else {
+							stp_load_size = MSS;
 						}
 						//increase sSeqNum based on segment acked.
 						//only doesn't change when error occurred previously
@@ -197,9 +203,10 @@ public class Sender {
 						}
 						//acknumber of the sender is always 1 except for handshake and FIN
 						sAckNum = rSeqNum;
-						buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, checksum(), MSS);
-						//puts MSS bytes into buf at an offset of STP_HEADER_LENGTH
-						int read = fis.read(buf, STP_HEADER_SIZE, MSS);
+						buf = STPHeader(sSeqNum, sAckNum, SYN_FLAG, MWS, MSS, 0, stp_load_size, fis);
+						// //puts MSS bytes into buf at an offset of STP_HEADER_LENGTH
+						// int read = fis.read(buf, STP_HEADER_SIZE, stp_load_size);
+
 						
 						//initiates the packet for sending
 						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
@@ -250,7 +257,7 @@ public class Sender {
 			sSeqNum = getAckNum(recPac.getData());
 			sAckNum = getSeqNum(recPac.getData()) + 1;
 			//send FIN glag to receiver
-			buf = STPHeader(sSeqNum, sAckNum, FIN_FLAG, MWS, MSS, checksum(), 0);
+			buf = STPHeader(sSeqNum, sAckNum, FIN_FLAG, MWS, MSS, 0, 0, fis);
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
 
@@ -271,7 +278,7 @@ public class Sender {
 				System.out.println("ERROR: Did not receive FIN_FLAG for FIN");
 			}
 			sSeqNum += 1;
-			buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, checksum(), 0);
+			buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, 0, 0, fis);
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
 
@@ -326,28 +333,12 @@ public class Sender {
 			// }
 
 
-			// //initialise STP header
-			// //source port num
-			// sourcePort = socket.getLocalPort();
-			// //dest port num already initialised
-			// //sequence number already initialised
-			// if(ackNum > )
-			// nextSeqNum = ackNum;
-
-
-
-			// //checks the acks and stuff
-			// processData(request);
-
-			// //fill in buf with data to be sent back
-			// getData(&buf)
-
 
 		
 
 	}
 
-	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, int stp_load_size) {
+	private static byte[] STPHeader(int seqNo, int ackNo, byte flags, int MWS, int MSS, int checksum, int stp_load_size, FileInputStream fis) throws Exception {
 		
 		if(stp_load_size != 0 && stp_load_size != MSS) {
 			System.out.println("load length is not 0 or MSS: " + Integer.toString(stp_load_size));
@@ -361,6 +352,7 @@ public class Sender {
 		byteBuf.put(flags);
 		byteBuf.putInt(MWS);
 		byteBuf.putInt(MSS);
+		//this value is 0 because checksum is calculated once the whle segment is filled in, think of this as a filler
 		byteBuf.putInt(checksum);
 		//byteBuf.put(stp_load);
 
@@ -371,6 +363,11 @@ public class Sender {
 		byteBuf.get(holder);
 		byte[] buf = new byte[length];
 		System.arraycopy(holder, 0, buf, 0, holder.length);
+
+		//puts MSS bytes into buf at an offset of STP_HEADER_LENGTH
+		int read = fis.read(buf, STP_HEADER_SIZE, stp_load_size);
+		byteBuf = ByteBuffer.wrap(buf);
+		byteBuf.putInt(17, checkSum(buf));
 
 		return buf;
 	 }
@@ -392,17 +389,20 @@ public class Sender {
 			socket.send(sendPac);
 		}
 		 else if(random.nextFloat() < pCorr) {
+		 	System.out.println("corrupt the packet");
 			//corrupt the packet
 			error = PCOR;
 
-			byte[] oldBuffer = Arrays.copyOf(sendPac.getData(), sendPac.getLength());
+			//byte[] oldBuffer = Arrays.copyOf(sendPac.getData(), sendPac.getLength());
 
 			invertBit(sendPac.getData(),sendPac.getLength()); 
-			if(Arrays.equals(oldBuffer, sendPac.getData()) == true) {
-				System.out.println("invertBit does work");
-			} else {
-				System.out.println("invertBit does not work");
-			}
+			// if(Arrays.equals(oldBuffer, sendPac.getData()) == true) {
+			// 	System.out.println("invertBit does work");
+			// } else {
+			// 	System.out.println("invertBit does not work");
+			// }
+			socket.send(sendPac);
+
 
 		}
 		// else if(random.nextFloat() < pOrder) {
@@ -424,7 +424,8 @@ public class Sender {
 	}
 
 	private static void invertBit(byte[] segment, int length) {
-		segment[0] = (byte) (segment[0] ^ (1 << (length -1)));
+		//inverts the 4th last bit in the MSS variable of the header
+		segment[STP_HEADER_SIZE-5] = (byte) (segment[STP_HEADER_SIZE -5] ^ (1 << 3));
 
 	
 		// //use a bytebuffer representation of the data
@@ -443,10 +444,16 @@ public class Sender {
 		// // System.arraycopy(holder, 0, buf, 0, holder.length);
 
 	}
-
-	private static int checksum() {
-		return 0;
+	private static int checkSum(byte[] segment) {
+		int b = 0;
+		//range of header (excluding checksum variable);
+		for(int i = 0; i < (STP_HEADER_SIZE -4); i++) {
+			b += (int) segment[i];
+		}
+		System.out.println("calculated checkSum is: " + b);
+		return b;
 	}
+
 
 		/* 
 	 * Print ping data to the standard output stream.
@@ -488,19 +495,19 @@ public class Sender {
 		return byteBuf.get(8);
 	}
 	
-	private static int MWS (byte[] buf) 
+	private static int getMWS (byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(9);
 	}
 
-	private static int MSS (byte[] buf) 
+	private static int getMSS (byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(13);
 	}
 
-	private static int checksum(byte[] buf) 
+	private static int getChecksum(byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(17);

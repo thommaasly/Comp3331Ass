@@ -82,7 +82,7 @@ public class Receiver
 			byte[] payload = new byte[byteBuf.remaining()];
 			byteBuf.get(payload);
 
-
+			printData(request);
 			//establish connection with receiver	 - HANDSHAKE
 			if((flags & SYN_FLAG) != 0 && handshake != 1) {
 				System.out.println("we got a SYN_FLAG");
@@ -126,7 +126,15 @@ public class Receiver
 			} 
 			//receiving data
 			else {
-				
+				//the checksum we calculate
+				int calChecksum = checkSum(request.getData());
+				 //the checksum given to us
+				int sChecksum = getChecksum(request.getData());
+				if(calChecksum != sChecksum) {
+					//corrupt packet received
+					System.out.println("corrupt packet received");
+					//drop the packet	
+				}
 				//when seqNo is not matching, from Duplicate packets
 				if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
 					System.out.println("got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
@@ -138,6 +146,7 @@ public class Receiver
 				}
 				else {
 					System.out.println("writing data");
+					
 					System.out.println("got as wanted seqNo: " + Integer.toString(seqNo) );
 
 					//writes the first segment which has seqNo 1 which is the same as during handshake (not to be confused with duplicate)
@@ -210,11 +219,20 @@ public class Receiver
 		byte[] buf = new byte[length];
 		//System.out.println("bytelength: " + Integer.toString(buf.length));
 		byteBuf.get(buf);
-
+		byteBuf = ByteBuffer.wrap(buf);
+		byteBuf.putInt(17, checkSum(buf));
 		return buf;
 	 }
 
-
+	private static int checkSum(byte[] segment) {
+		int b = 0;
+		//range of header (excluding checksum variable);
+		for(int i = 0; i < (STP_HEADER_SIZE -4); i++) {
+			b += (int) segment[i];
+		}
+		System.out.println("calculated checkSum is: " + b);
+		return b;
+	}
 	private static int getSeqNo(byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
@@ -233,19 +251,19 @@ public class Receiver
 		return byteBuf.get(8);
 	}
 	
-	private static int MWS (byte[] buf) 
+	private static int getMWS (byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(9);
 	}
 
-	private static int MSS (byte[] buf) 
+	private static int getMSS (byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(13);
 	}
 
-	private static int checksum(byte[] buf) 
+	private static int getChecksum(byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(17);
