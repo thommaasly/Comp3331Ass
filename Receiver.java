@@ -137,7 +137,7 @@ public class Receiver
 				}
 				//when seqNo is not matching, from Duplicate packets
 				if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
-					System.out.println("got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
+					System.out.println("duplicate packet received got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
 				
 					//resend lack ack that was proper
 					byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
@@ -168,7 +168,6 @@ public class Receiver
 					socket.send(sendPac);
 				}
 			}
-			printData(request);
 
 
 		}
@@ -230,7 +229,6 @@ public class Receiver
 		for(int i = 0; i < (STP_HEADER_SIZE -4); i++) {
 			b += (int) segment[i];
 		}
-		System.out.println("calculated checkSum is: " + b);
 		return b;
 	}
 	private static int getSeqNo(byte[] buf) 
