@@ -32,11 +32,12 @@ public class Sender {
 	private static final int PDEL = 5;
 	
 	//variables used for reordering, made global
-	private static DatagramPacket reOrder = NULL;
+	private static int hasReOrder = 0;
+	private static DatagramPacket reOrder;
 	private static int waited = 0;
 
 	public static void main(String[] args) throws Exception
-		{
+{
 			//receives 14 arguments in the format:
 			//java Sender receiver_host_ip receiver_port file.pdf MWS MSS gamma pDrop
 			//pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
@@ -162,6 +163,11 @@ public class Sender {
 			//size of payload (excluding header)			
 			int stp_load_size = 0;
 
+			//determines the behaviour of the packet
+			int error = 0;
+
+
+
 
 
 			//Send the data, processing loop
@@ -169,16 +175,25 @@ public class Sender {
 			{
 				try {
 					System.out.println("send data here");
+					//starts counting the time
+					Timer timer = new Timer();
 					long sendTime = System.currentTimeMillis();
 					
 					//while there are still bytes left to send
 					int rSeqNum = getSeqNum(recPac.getData());
 					int rAckNum = getAckNum(recPac.getData());
-					if(reOrder != NULL && waited == maxOrder) {
-						
+					//if there isi a segment that hsa been reordered and has waited for maxOrder other segments
+					//sends the packet
+					if(hasReOrder == 1 && waited == maxOrder) {
+						socket.send(reOrder);
+						hasReOrder = 0;
+					}
+					if(error == PDUP) {
+						//retransmit the packet
+						socket.send(sendPac);
+						error = 0;
 					}
 					//check to see if rAckNum has received the correct packet
-
 					if(rAckNum != sSeqNum + MSS && sSeqNum != 1) {
 						System.out.println("an error has occurred" + rAckNum + "ssn: " + sSeqNum);
 					}
@@ -187,7 +202,7 @@ public class Sender {
 						//for when Packet is dropped
 						System.out.println("the error that occurred was packet drop");
 						//resend the packet
-						int error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
+						error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
 						retransmitted = 1;
 						timeout = 0;
 					} else if(rAckNum == sSeqNum && sSeqNum != 1) {
@@ -218,8 +233,10 @@ public class Sender {
 						//initiates the packet for sending
 						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 						//use the PLD model to simulate any errors and send the datagram packet
-						int error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
-
+						error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
+						if(error == PORD) {
+							continue;
+						}
 						retransmitted = 0;
 
 					} 
@@ -228,8 +245,15 @@ public class Sender {
 					//System.out.println("receivingigg packet wait: " + Integer.toString(socket.getSoTimeout()));
 					
 					System.out.println("abouttoreceive");
-						socket.receive(recPac);
-				
+					socket.receive(recPac);
+					timer.schedule(new TimerTask() {
+					  @Override
+					  public void run() {
+					    a timeout occurred
+					    //socket.receive(recPac);
+					  }
+					}, timeoutInterval);	
+								
 					long receiveTime = System.currentTimeMillis();
 					System.out.println("sent:");
 					printData(sendPac);
@@ -247,15 +271,11 @@ public class Sender {
 						System.out.println("devRTT befor" + Double.toString(devRTT) + " estRTT " + Double.toString(estimatedRTT) + " difference: " + Double.toString(difference) + " sample " + Double.toString(sampleRTT));
 
 						devRTT = 0.75 * devRTT + 0.25 * (difference);
-						if(gamma * devRTT < 250) {
-							System.out.println("how can this happen?");
-						}
 					 	estimatedRTT = 0.875 * estimatedRTT + 0.125 * sampleRTT;
 					 	double timeoutInterval = estimatedRTT + gamma * devRTT;
-					 	System.out.println("devRTT after" + Double.toString(devRTT) + " estRTT " + Double.toString(estimatedRTT));
-						System.out.println("timeoutINternaval: " + timeoutInterval);
+					 // 	System.out.println("devRTT after" + Double.toString(devRTT) + " estRTT " + Double.toString(estimatedRTT));
+						// System.out.println("timeoutINternaval: " + timeoutInterval);
 					 	//System.out.println("sample RTT: " + Double.toString(sampleRTT) + " devrtt: " + Double.toString(devRTT) + " estRTT: " + Double.toString(estimatedRTT) + " setting tointerval to " + Double.toString(timeoutInterval));
-						socket.setSoTimeout((int) (timeoutInterval)); 
 					}
 
 				} 	catch (SocketTimeoutException e) {
@@ -388,7 +408,7 @@ public class Sender {
 
 		return buf;
 	 }
-	private static int PLDModule(Random random, float pDrop, float pDuplicate,float pCorr,float pOrder, float pDelay, float, maxDelay, DatagramPacket sendPac, DatagramSocket socket) throws Exception {
+	private static int PLDModule(Random random, float pDrop, float pDuplicate,float pCorr,float pOrder, float pDelay, float maxDelay, DatagramPacket sendPac, DatagramSocket socket) throws Exception {
 		//random.nextFloat() is used to compare to probability of errors being simulated
 		
 		//error is the value being returned
@@ -403,7 +423,7 @@ public class Sender {
 			error = PDUP;
 			System.out.println("duplicate the packet");
 			socket.send(sendPac);
-			socket.send(sendPac);
+			//socket.send(sendPac);
 		}
 		 else if(random.nextFloat() < pCorr) {
 		 	System.out.println("corrupt the packet");
@@ -416,8 +436,10 @@ public class Sender {
 			//reorder the packet
 			//store the packet somoeone else, so it is not sent
 			System.out.println("reorder the pack");
-			if(reOrder == NULL) {
+			if(hasReOrder == 0) {
+				System.out.println("	NEED TO REORDER, PUT INTO QUEUE");
 				reOrder = sendPac;
+				hasReOrder = 1;
 			} else {
 				System.out.println("already have something in reorder queue, send segment normally");
 				socket.send(sendPac);
@@ -427,7 +449,7 @@ public class Sender {
 		else if(random.nextFloat() < pDelay) {
 			//delay the packet
 			System.out.println("delay for some time before sending");
-			int sleep = random.nextInt(maxDelay);
+			int sleep = random.nextInt((int) maxDelay);
 
 			socket.send(sendPac);
 			error = PDEL;
