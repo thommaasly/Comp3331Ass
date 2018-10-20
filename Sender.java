@@ -31,6 +31,17 @@ public class Sender {
 	private static final int PORD = 4;
 	private static final int PDEL = 5;
 	
+
+	private static int segments_transmitted = 0;
+	private static int segments_handled_PLD = 0;
+	private static int segments_dropped = 0;
+	private static int segments_corrupted = 0;
+	private static int segments_reordered = 0;
+	private static int segments_duplicated = 0;
+	private static int segments_delayed = 0;
+	private static int segments_retransmitted = 0;
+	private static int dupAcks_received = 0;
+
 	//variables used for reordering, made global
 	// private static int hasReOrder = 0;
 	// private static DatagramPacket reOrder;
@@ -42,8 +53,16 @@ public class Sender {
 	private static byte[] oldBuf = new byte[0];
 	private static DatagramPacket sendPac = new DatagramPacket(new byte[0],0);
 
+
+	private static final long initTime = System.currentTimeMillis();
+	private static PrintStream log;
+
 	public static void main(String[] args) throws Exception
 {
+			//text file that contains metadata on packets sent
+			log = new PrintStream(new File("Sender_log.txt"));
+
+
 			//receives 14 arguments in the format:
 			//java Sender receiver_host_ip receiver_port file.pdf MWS MSS gamma pDrop
 			//pDuplicate pCorrupt pOrder maxOrder pDelay maxDelay seed
@@ -137,9 +156,12 @@ public class Sender {
 		//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
-
+			log.printf("snd\t%.2f\tS\t0\t0\t0%n", elapsedTime(initTime));
+			segments_transmitted += 1;
 			//receive reply from Receiver
 			socket.receive(recPac);
+
+			log.printf("rcv\t%.2f\tSA\t0\t0\t1%n", elapsedTime(initTime));
 			sAckNum = getAckNum(recPac.getData());
 			if(getAckNum(recPac.getData()) == 1 && getFlags(recPac.getData()) == (SYN_FLAG | ACK_FLAG)) {
 				sSeqNum = 1;
@@ -147,6 +169,8 @@ public class Sender {
 				buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, 0, 0, fis);
 				sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 				socket.send(sendPac);
+				log.printf("snd\t%.2f\tA\t1\t0\t1%n", elapsedTime(initTime));
+				segments_transmitted += 1;
 
 			} else {
 				System.out.println("did not received SYN_ACK, ackNo: " + Integer.toString(getAckNum(recPac.getData()))
@@ -190,9 +214,14 @@ public class Sender {
 							//resend the packet
 							sendPac.setData(oldBuf);
 							socket.send(sendPac);
+							log.printf("snd/RXT\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength() - STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+							segments_transmitted += 1;
+							segments_handled_PLD += 1;
+							segments_retransmitted += 1;
 							retransmitted = 1;
 						} catch (Exception e) {
 							System.out.println("		COULD NOT RETRANSMIT, first transmission was wrong");
+							e.printStackTrace();
 							//socket.send()
 						}
 					  }
@@ -252,15 +281,21 @@ public class Sender {
 							continue;
 						}
 						retransmitted = 0;
-
+						System.out.println("Fin noerror trans");
 					} 
 
 					//receieve the packet
 					//System.out.println("receivingigg packet wait: " + Integer.toString(socket.getSoTimeout()));
 					
 					System.out.println("abouttoreceive");
+					int oldAckNum = getAckNum(recPac.getData());
 					socket.receive(recPac);
-					
+					if(oldAckNum == getAckNum(recPac.getData())) {
+						log.printf("rcv/DA\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(recPac.getData()), recPac.getLength()- STP_HEADER_SIZE, getAckNum(recPac.getData()));
+						dupAcks_received += 1;
+				} else {
+						log.printf("rcv\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(recPac.getData()), recPac.getLength()- STP_HEADER_SIZE, getAckNum(recPac.getData()));		
+					}
 					
 					//if the socket didn't time out, cancel it
 					timer.cancel();
@@ -304,10 +339,13 @@ public class Sender {
 			buf = STPHeader(sSeqNum, sAckNum, FIN_FLAG, MWS, MSS, 0, 0, fis);
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
-
+			log.printf("snd\t%.2f\tF\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_transmitted += 1;
 			System.out.println("receive ack");
 			//receieve reply, expecting ACK_FLAG;
 			socket.receive(recPac);
+			log.printf("rcv\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(recPac.getData()), recPac.getLength()- STP_HEADER_SIZE, getAckNum(recPac.getData()));
+
 								System.out.println("sent:");
 					printData(sendPac);
 					System.out.println("Received:");
@@ -318,6 +356,8 @@ public class Sender {
 			System.out.println("receive fin");
 			//receieve second reply, expecting FIN_FLAG
 			socket.receive(recPac);
+			log.printf("rcv\t%.2f\tF\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+
 			if(getFlags(recPac.getData()) != FIN_FLAG) {
 				System.out.println("ERROR: Did not receive FIN_FLAG for FIN");
 			}
@@ -325,7 +365,8 @@ public class Sender {
 			buf = STPHeader(sSeqNum, sAckNum, ACK_FLAG, MWS, MSS, 0, 0, fis);
 			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
-
+			log.printf("snd\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_transmitted += 1;
 			//need to wait for some time before closing
 
 
@@ -334,10 +375,21 @@ public class Sender {
 					System.out.println("sent:");
 					printData(sendPac);
 			socket.close();
-			System.out.println("file had size: " + Long.toString(f.length()));
+
 			System.out.println("Connection closed.");
-
-
+			
+			log.printf("=============================================================%n");
+			log.printf("Size of the file (in Bytes) %d%n", f.length());
+			log.printf("Segments transmitted (including drop & RXT) %d%n", segments_transmitted);
+			log.printf("Number of Segments handled by PLD %d%n", segments_handled_PLD);
+			log.printf("Number of Segments dropped %d%n", segments_dropped);
+			log.printf("Number of Segments Corrupted %d%n", segments_corrupted);
+			log.printf("Number of Segments Re-ordered %d%n", segments_reordered);
+			log.printf("Number of Segments Duplicated %d%n", segments_duplicated);
+			log.printf("Number of Segments Delayed %d%n", segments_delayed);
+			log.printf("Number of Retransmissions due to TIMEOUT %d%n", segments_retransmitted);
+			log.printf("Number of DUP ACKS received %d%n", dupAcks_received);
+			log.printf("=============================================================");
 
 
 		
@@ -387,13 +439,24 @@ public class Sender {
 			//drop the packet
 			System.out.println("drop a packet");
 			error = PDRP;
+			log.printf("drop\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;
+			segments_dropped += 1;
 		} 
 		else if(random.nextFloat() < pDuplicate) {
 			//duplicate the packet
 			error = PDUP;
 			System.out.println("duplicate the packet");
 			socket.send(sendPac);
+			log.printf("snd\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;			
 			socket.send(sendPac);
+			log.printf("snd/dup\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;
+			segments_duplicated += 1;
 		}
 		 else if(random.nextFloat() < pCorr) {
 		 	System.out.println("corrupt the packet");
@@ -401,6 +464,10 @@ public class Sender {
 			error = PCOR;
 			invertBit(sendPac.getData(),sendPac.getLength()); 
 			socket.send(sendPac);
+			log.printf("snd/corr\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;
+			segments_corrupted += 1;
 		}
 		// else if(random.nextFloat() < pOrder) {
 		// 	//reorder the packet
@@ -422,10 +489,18 @@ public class Sender {
 			int sleep = random.nextInt((int) maxDelay);
 			Thread.sleep(sleep);
 			error = PDEL;
+			socket.send(sendPac);
+			log.printf("snd/dely\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;
+			segments_delayed += 1;
 		} 
 		else {
 			//send the packet normally
 			socket.send(sendPac);
+			log.printf("snd\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+			segments_handled_PLD += 1;
+			segments_transmitted += 1;
 		}
 
 
@@ -462,6 +537,12 @@ public class Sender {
 		return b;
 	}
 
+	private static double elapsedTime(long startTime) {
+		double elapsedTime = System.currentTimeMillis() - startTime;
+		//convert to seconds
+		elapsedTime /= 1000;
+		return elapsedTime;
+	}
 
 		/* 
 	 * Print ping data to the standard output stream.
