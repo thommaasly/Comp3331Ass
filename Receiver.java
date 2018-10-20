@@ -165,7 +165,7 @@ public class Receiver
 				System.out.println("calchecksum " + calChecksum + " sChecksum " + sChecksum);
 				if(calChecksum != sChecksum) {
 					log.printf("rcv/corr\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
-					bytes_received += request.getLength();
+					bytes_received += request.getLength()-STP_HEADER_SIZE;
 					total_segments_received +=1;
 					data_segments_received +=1;
 					data_segments_errors +=1;
@@ -178,7 +178,7 @@ public class Receiver
 					System.out.println("duplicate packet received got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
 					log.printf("rcv\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
 					duplicate_acks_sent +=1;
-					bytes_received += request.getLength();
+					bytes_received += request.getLength()-STP_HEADER_SIZE;
 					total_segments_received +=1;
 					data_segments_received +=1;
 					data_segments_duplicated +=1;
@@ -192,7 +192,7 @@ public class Receiver
 				else {
 					System.out.println("writing data");
 					log.printf("rcv\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
-					bytes_received += request.getLength();
+					bytes_received += request.getLength()-STP_HEADER_SIZE;
 					total_segments_received +=1;
 					data_segments_received +=1;
 					System.out.println("got as wanted seqNo: " + Integer.toString(seqNo) );
