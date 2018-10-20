@@ -391,7 +391,7 @@ public class Sender {
 			log.printf("Number of DUP ACKS received %d%n", dupAcks_received);
 			log.printf("=============================================================");
 
-
+			log.close();
 		
 
 	}

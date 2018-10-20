@@ -26,8 +26,19 @@ public class Receiver
 	private static final byte FIN_FLAG = 0x1;
 	private static final byte NUL_FLAG = 0x0;
 	
+	private static int bytes_received = 0;
+	private static int total_segments_received = 0;
+	private static int data_segments_received = 0;
+	private static int data_segments_errors = 0;
+	private static int data_segments_duplicated = 0;
+	private static int duplicate_acks_sent = 0;
+
+	private static long initTime;
+
+
 	//STP header will always be fixed size when sent by receiver because no payload
 	private static final byte STP_HEADER_SIZE = 21;
+	private static PrintStream log;
 
 	public static void main(String[] args) throws Exception
 	{
@@ -36,6 +47,10 @@ public class Receiver
 			System.out.println("Required arguments: receiver_port file_r.pdf");
 			return;
 		}
+
+		//text file that contains metadata on packets sent
+		log = new PrintStream(new File("Receiver_log.txt"));
+
 		//the port number which the Reeiver will open a UDP socket for receiving datagrams
 		int port = Integer.parseInt(args[0]);
 		//the name of the pdf file which the data hsould be stored
@@ -51,14 +66,13 @@ public class Receiver
 		// Create a datagram socket for sending UDP packets
 		// bind to port passed in as variable
 		DatagramSocket socket = new DatagramSocket(port);
-		System.out.println("socket is bound to port" + Integer.toString(port) + "and is connected: " + socket.isConnected() + "is closed" + socket.isClosed());
 
 		//initiate MSS will a starting value of 0
 		int MSS = 0;
 
 		//handshake completed or not
 		int handshake = 0;
-
+		int timeCounted = 0;
 		//indicates if transmission has started, used for if first segment gets duplicated
 		int startTrans = 0;
 		while(socket.isClosed() != true) {
@@ -68,6 +82,12 @@ public class Receiver
 
 //			try{
 			socket.receive(request);
+			if(timeCounted == 0) {
+				initTime = System.currentTimeMillis();
+				timeCounted = 1;
+			}
+			//log.printf("rcv\t%.2f\tS\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+
 			//storing data received inside variables
 			InetAddress sender_host_ip = request.getAddress();
 			int sender_port = request.getPort();
@@ -85,7 +105,8 @@ public class Receiver
 			printData(request);
 			//establish connection with receiver	 - HANDSHAKE
 			if((flags & SYN_FLAG) != 0 && handshake != 1) {
-				System.out.println("we got a SYN_FLAG");
+				log.printf("rcv\t%.2f\tS\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+				total_segments_received +=1;
 				//reply with a SYN_ACK
 				//ackNum is the received seqNum+1
 				ackNum = seqNo + 1;
@@ -94,9 +115,12 @@ public class Receiver
 				byte[] buf = STPHeader(nextSeqNum, ackNum, flag, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
+				log.printf("snd\t%.2f\tS\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
 
 				byte[] recbuf = new byte[STP_HEADER_SIZE + MSS];
 				socket.receive(request);
+				log.printf("rcv\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+				total_segments_received +=1;
 				if(getFlags(request.getData()) == ACK_FLAG) {
 					System.out.println("got ACK flag");
 				}
@@ -104,6 +128,8 @@ public class Receiver
 			}
 			//terminate connection with sender
 			else if((flags & FIN_FLAG) != 0) {
+				log.printf("rcv\t%.2f\tF\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+				total_segments_received +=1;
 				System.out.println("closing connection");
 				//send ACK to FIN received
 				System.out.println("sending closing ACK_FLAG");
@@ -111,13 +137,18 @@ public class Receiver
 				byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
 				DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
+				log.printf("snd\t%.2f\tF\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+
 				System.out.println("sending closing FIN_FLAG");
 				//send FIN flag after ACK
 				buf = STPHeader(nextSeqNum, ackNum, FIN_FLAG, MWS, MSS, checksum, 0);
 				sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 				socket.send(sendPac);
+				log.printf("snd\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
 
 				socket.receive(request);
+				log.printf("rcv\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+				total_segments_received +=1;
 				if(getFlags(request.getData()) != ACK_FLAG) {
 					System.out.println("ERROR: failed to receive ACK_FLAG for close");
 				}
@@ -126,12 +157,18 @@ public class Receiver
 			} 
 			//receiving data
 			else {
+
 				//the checksum we calculate
 				int calChecksum = checkSum(request.getData());
 				 //the checksum given to us
 				int sChecksum = getChecksum(request.getData());
 				System.out.println("calchecksum " + calChecksum + " sChecksum " + sChecksum);
 				if(calChecksum != sChecksum) {
+					log.printf("rcv/corr\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+					bytes_received += request.getLength();
+					total_segments_received +=1;
+					data_segments_received +=1;
+					data_segments_errors +=1;
 					//corrupt packet received
 					System.out.println("corrupt packet received");
 					//drop the packet	
@@ -139,15 +176,25 @@ public class Receiver
 				//when seqNo is not matching, from Duplicate packets
 				else if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
 					System.out.println("duplicate packet received got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
-				
+					log.printf("rcv\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+					duplicate_acks_sent +=1;
+					bytes_received += request.getLength();
+					total_segments_received +=1;
+					data_segments_received +=1;
+					data_segments_duplicated +=1;
 					//resend lack ack that was proper
 					byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
 					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 					socket.send(sendPac);
+					log.printf("snd/DA\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+
 				}
 				else {
 					System.out.println("writing data");
-					
+					log.printf("rcv\t%.2f\tD\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(request.getData()), request.getLength()- STP_HEADER_SIZE, getAckNum(request.getData()));
+					bytes_received += request.getLength();
+					total_segments_received +=1;
+					data_segments_received +=1;
 					System.out.println("got as wanted seqNo: " + Integer.toString(seqNo) );
 
 					//writes the first segment which has seqNo 1 which is the same as during handshake (not to be confused with duplicate)
@@ -167,14 +214,23 @@ public class Receiver
 					byte[] buf = STPHeader(nextSeqNum, ackNum, ACK_FLAG, MWS, MSS, checksum, 0);
 					DatagramPacket sendPac = new DatagramPacket(buf, buf.length, sender_host_ip, sender_port);
 					socket.send(sendPac);
+					log.printf("snd\t%.2f\tA\t%d\t%d\t%d%n", elapsedTime(initTime), getSeqNum(sendPac.getData()), sendPac.getLength()- STP_HEADER_SIZE, getAckNum(sendPac.getData()));
+
 				}
 			}
 
 
 		}
-			 
-	}
-
+		log.printf("==============================================%n");
+		log.printf("Amount of data received (bytes) %d%n",bytes_received);
+		log.printf("Total Segments Received %d%n", total_segments_received);
+		log.printf("Data segments received %d%n", data_segments_received);
+		log.printf("Data segments with Bit Errors %d%n", data_segments_errors);
+		log.printf("Duplicate data segments received %d%n", data_segments_duplicated);
+		log.printf("Duplicate ACKs sent %d%n",duplicate_acks_sent);
+		log.printf("==============================================%n");
+		 
+}
 	/* 
 	 * Print ping data to the standard output stream.
 	 */
@@ -224,6 +280,12 @@ public class Receiver
 		return buf;
 	 }
 
+	private static double elapsedTime(long startTime) {
+		double elapsedTime = System.currentTimeMillis() - startTime;
+		//convert to seconds
+		elapsedTime /= 1000;
+		return elapsedTime;
+	}
 	private static int checkSum(byte[] segment) {
 		int b = 0;
 		//range of header (excluding checksum variable);
@@ -232,13 +294,13 @@ public class Receiver
 		}
 		return b;
 	}
-	private static int getSeqNo(byte[] buf) 
+	private static int getSeqNum(byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt();
 	}
 
-	private static int getAckNo (byte[] buf) 
+	private static int getAckNum (byte[] buf) 
 	{
 		ByteBuffer byteBuf = ByteBuffer.wrap(buf);
 		return byteBuf.getInt(4);
