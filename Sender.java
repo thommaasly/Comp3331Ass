@@ -32,9 +32,9 @@ public class Sender {
 	private static final int PDEL = 5;
 	
 	//variables used for reordering, made global
-	private static int hasReOrder = 0;
-	private static DatagramPacket reOrder;
-	private static int waited = 0;
+	// private static int hasReOrder = 0;
+	// private static DatagramPacket reOrder;
+	// private static int waited = 0;
 
 	//determines if a timeout has occurred
 	private static int retransmitted = 0;
@@ -205,10 +205,10 @@ public class Sender {
 					int rAckNum = getAckNum(recPac.getData());
 					//if there isi a segment that hsa been reordered and has waited for maxOrder other segments
 					//sends the packet
-					if(hasReOrder == 1 && waited == maxOrder) {
-						socket.send(reOrder);
-						hasReOrder = 0;
-					}
+					// if(hasReOrder == 1 && waited == maxOrder) {
+					// 	socket.send(reOrder);
+					// 	hasReOrder = 0;
+					// }
 					
 					if(rAckNum != sSeqNum + MSS && sSeqNum != 1) {
 						System.out.println("an error has occurred" + rAckNum + "ssn: " + sSeqNum);
@@ -284,12 +284,15 @@ public class Sender {
 						devRTT = 0.75 * devRTT + 0.25 * (difference);
 					 	estimatedRTT = 0.875 * estimatedRTT + 0.125 * sampleRTT;
 					 	timeoutInterval = estimatedRTT + gamma * devRTT;
+
 					 // 	System.out.println("devRTT after" + Double.toString(devRTT) + " estRTT " + Double.toString(estimatedRTT));
-						// System.out.println("timeoutINternaval: " + timeoutInterval);
+						 System.out.println("timeoutINternaval: " + timeoutInterval);
 					 	//System.out.println("sample RTT: " + Double.toString(sampleRTT) + " devrtt: " + Double.toString(devRTT) + " estRTT: " + Double.toString(estimatedRTT) + " setting tointerval to " + Double.toString(timeoutInterval));
 					}
 
 			}
+
+
 
 			//initaiate close, sending is done
 			System.out.println("clsoe the file setting finSending to 1");
@@ -334,44 +337,6 @@ public class Sender {
 			System.out.println("file had size: " + Long.toString(f.length()));
 			System.out.println("Connection closed.");
 
-
-
-
-
-
-			// //buffer to store incoming data
-			// ByteBuffer buf =  ByteBuffer.allocate(STP_HEADER_SIZE);
-			// //packet receivered from client, holds the incoming UDP packet
-
-			// //datagram packet
-			// DatagramPacket request = new DatagramPacket(buf,buf.length);
-
-			// //store any request coming in from socket into datagrampacket
-			// socket.receive(request);
-
-
-
-			// if(datareceived from receiver) {
-			// 	create STP segment with seq num nextSeqNum
-			// 	if(timer not running) {
-			// 		start timer
-			// 	}
-			// 	pass segment to IP
-			// 	nextSeqNum = NextSeqNum + length(data);
-			// }
-			// //timer is associated with oldest non-acked segment 
-			// else if(timerTimeout) {
-			// 	retransmit not ack'd semgnets'
-			// 	start timer
-			// } 
-			// else if(ack received, with ack field value of y) {
-			// 	if (y> sendbase) {
-			// 		sendbase = y;
-			// 		if(there are currently any not yet acked segments){ 
-			// 			start timer
-			// 		}
-			// 	}
-			// }
 
 
 
@@ -437,26 +402,25 @@ public class Sender {
 			invertBit(sendPac.getData(),sendPac.getLength()); 
 			socket.send(sendPac);
 		}
-		else if(random.nextFloat() < pOrder) {
-			//reorder the packet
-			//store the packet somoeone else, so it is not sent
-			System.out.println("reorder the pack");
-			if(hasReOrder == 0) {
-				System.out.println("	NEED TO REORDER, PUT INTO QUEUE");
-				reOrder = sendPac;
-				hasReOrder = 1;
-			} else {
-				System.out.println("already have something in reorder queue, send segment normally");
-				socket.send(sendPac);
-			}
-			error = PORD;
-		} 
+		// else if(random.nextFloat() < pOrder) {
+		// 	//reorder the packet
+		// 	//store the packet somoeone else, so it is not sent
+		// 	System.out.println("reorder the pack");
+		// 	if(hasReOrder == 0) {
+		// 		System.out.println("	NEED TO REORDER, PUT INTO QUEUE");
+		// 		reOrder = sendPac;
+		// 		hasReOrder = 1;
+		// 	} else {
+		// 		System.out.println("already have something in reorder queue, send segment normally");
+		// 		socket.send(sendPac);
+		// 	}
+		// 	error = PORD;
+		// } 
 		else if(random.nextFloat() < pDelay) {
 			//delay the packet
 			System.out.println("delay for some time before sending");
 			int sleep = random.nextInt((int) maxDelay);
-
-			socket.send(sendPac);
+			Thread.sleep(sleep);
 			error = PDEL;
 		} 
 		else {
