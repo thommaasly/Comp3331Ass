@@ -130,13 +130,14 @@ public class Receiver
 				int calChecksum = checkSum(request.getData());
 				 //the checksum given to us
 				int sChecksum = getChecksum(request.getData());
+				System.out.println("calchecksum " + calChecksum + " sChecksum " + sChecksum);
 				if(calChecksum != sChecksum) {
 					//corrupt packet received
 					System.out.println("corrupt packet received");
 					//drop the packet	
 				}
 				//when seqNo is not matching, from Duplicate packets
-				if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
+				else if(seqNo != ackNum || (startTrans == 1 && seqNo != ackNum )) {
 					System.out.println("duplicate packet received got seqNo: " + Integer.toString(seqNo) + " instead of: " + Integer.toString(ackNum + MSS));
 				
 					//resend lack ack that was proper

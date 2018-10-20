@@ -36,6 +36,12 @@ public class Sender {
 	private static DatagramPacket reOrder;
 	private static int waited = 0;
 
+	//determines if a timeout has occurred
+	private static int retransmitted = 0;
+
+	private static byte[] oldBuf = new byte[0];
+	private static DatagramPacket sendPac = new DatagramPacket(new byte[0],0);
+
 	public static void main(String[] args) throws Exception
 {
 			//receives 14 arguments in the format:
@@ -114,7 +120,7 @@ public class Sender {
 			DatagramPacket recPac = new DatagramPacket(recBuf, recBuf.length);
     		
     		//make the socket only block for 1 second   
-    		socket.setSoTimeout(1000);
+    		double timeoutInterval = 1000;
 			//iniialisation of timer variables (in milliseconds)
 			double estimatedRTT = 500;
 			double devRTT = 250;
@@ -129,7 +135,7 @@ public class Sender {
 			//rece back 
 		//	System.out.println("buff lenth is " + Integer.toString(buf.length));
 		//	System.out.println("receiver_host_ip:" + receiver_host_ip.toString() + " destport: " + Integer.toString(destPort));
-			DatagramPacket sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+			sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
 			socket.send(sendPac);
 
 			//receive reply from Receiver
@@ -152,13 +158,11 @@ public class Sender {
 			System.out.println("Handshake complete, file input stream created");
 			//end Handshake
 
-			//determines if a timeout has occurred
-			int timeout = 0;
 
 			//determines if a duplicate pack was received
 			int dupPac = 0;
 			//checks if a segment has been retransmitted
-			int retransmitted = 1;
+			retransmitted = 1;
 
 			//size of payload (excluding header)			
 			int stp_load_size = 0;
@@ -173,10 +177,27 @@ public class Sender {
 			//Send the data, processing loop
 			while(fis.available() != 0)
 			{
-				try {
 					System.out.println("send data here");
 					//starts counting the time
 					Timer timer = new Timer();
+					timer.schedule(new TimerTask() {
+					@Override
+					public void run() {	
+						try {
+							System.out.println("THE SOCKET TIMED OUT");
+							//for when Packet is dropped
+							System.out.println("the error that occurred was packet drop or corrupt packet");
+							//resend the packet
+							sendPac.setData(oldBuf);
+							socket.send(sendPac);
+							retransmitted = 1;
+						} catch (Exception e) {
+							System.out.println("		COULD NOT RETRANSMIT, first transmission was wrong");
+							//socket.send()
+						}
+					  }
+					}, (long) timeoutInterval);	
+					System.out.println("run other code");
 					long sendTime = System.currentTimeMillis();
 					
 					//while there are still bytes left to send
@@ -188,24 +209,12 @@ public class Sender {
 						socket.send(reOrder);
 						hasReOrder = 0;
 					}
-					if(error == PDUP) {
-						//retransmit the packet
-						socket.send(sendPac);
-						error = 0;
-					}
-					//check to see if rAckNum has received the correct packet
+					
 					if(rAckNum != sSeqNum + MSS && sSeqNum != 1) {
 						System.out.println("an error has occurred" + rAckNum + "ssn: " + sSeqNum);
 					}
 
-					if(timeout == 1) {
-						//for when Packet is dropped
-						System.out.println("the error that occurred was packet drop");
-						//resend the packet
-						error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
-						retransmitted = 1;
-						timeout = 0;
-					} else if(rAckNum == sSeqNum && sSeqNum != 1) {
+				if(rAckNum == sSeqNum && sSeqNum != 1) {
 						//just received a duplicate ack because accidentally resent, do nothing in response
 						System.out.println("received a duplicate ack");
 						dupPac = 1;
@@ -229,9 +238,14 @@ public class Sender {
 						// //puts MSS bytes into buf at an offset of STP_HEADER_LENGTH
 						// int read = fis.read(buf, STP_HEADER_SIZE, stp_load_size);
 
+						//store the segment to be sent as a backup in case of retansmission of corruption
 						
+					
 						//initiates the packet for sending
+
 						sendPac = new DatagramPacket(buf, buf.length, receiver_host_ip, destPort);
+
+
 						//use the PLD model to simulate any errors and send the datagram packet
 						error = PLDModule(random, pDrop, pDup,pCorr,pOrder,pDelay, maxDelay, sendPac, socket);
 						if(error == PORD) {
@@ -246,13 +260,10 @@ public class Sender {
 					
 					System.out.println("abouttoreceive");
 					socket.receive(recPac);
-					timer.schedule(new TimerTask() {
-					  @Override
-					  public void run() {
-					    a timeout occurred
-					    //socket.receive(recPac);
-					  }
-					}, timeoutInterval);	
+					
+					
+					//if the socket didn't time out, cancel it
+					timer.cancel();
 								
 					long receiveTime = System.currentTimeMillis();
 					System.out.println("sent:");
@@ -272,18 +283,11 @@ public class Sender {
 
 						devRTT = 0.75 * devRTT + 0.25 * (difference);
 					 	estimatedRTT = 0.875 * estimatedRTT + 0.125 * sampleRTT;
-					 	double timeoutInterval = estimatedRTT + gamma * devRTT;
+					 	timeoutInterval = estimatedRTT + gamma * devRTT;
 					 // 	System.out.println("devRTT after" + Double.toString(devRTT) + " estRTT " + Double.toString(estimatedRTT));
 						// System.out.println("timeoutINternaval: " + timeoutInterval);
 					 	//System.out.println("sample RTT: " + Double.toString(sampleRTT) + " devrtt: " + Double.toString(devRTT) + " estRTT: " + Double.toString(estimatedRTT) + " setting tointerval to " + Double.toString(timeoutInterval));
 					}
-
-				} 	catch (SocketTimeoutException e) {
-					System.out.println("THE SOCKET TIMED OUT");
-					timeout = 1;
-				}
-
-				
 
 			}
 
@@ -291,7 +295,7 @@ public class Sender {
 			System.out.println("clsoe the file setting finSending to 1");
 			fis.close();
 			System.out.println("start FIN, send FIN_FALG");
-			sSeqNum = getAckNum(recPac.getData());
+			sSeqNum = sSeqNum + stp_load_size;
 			sAckNum = getSeqNum(recPac.getData()) + 1;
 			//send FIN glag to receiver
 			buf = STPHeader(sSeqNum, sAckNum, FIN_FLAG, MWS, MSS, 0, 0, fis);
@@ -410,7 +414,8 @@ public class Sender {
 	 }
 	private static int PLDModule(Random random, float pDrop, float pDuplicate,float pCorr,float pOrder, float pDelay, float maxDelay, DatagramPacket sendPac, DatagramSocket socket) throws Exception {
 		//random.nextFloat() is used to compare to probability of errors being simulated
-		
+		oldBuf = new byte[sendPac.getLength()];
+		System.arraycopy(sendPac.getData(), 0, oldBuf, 0, sendPac.getLength());
 		//error is the value being returned
 		int error = 0;
 		if(random.nextFloat() < pDrop) {
@@ -423,7 +428,7 @@ public class Sender {
 			error = PDUP;
 			System.out.println("duplicate the packet");
 			socket.send(sendPac);
-			//socket.send(sendPac);
+			socket.send(sendPac);
 		}
 		 else if(random.nextFloat() < pCorr) {
 		 	System.out.println("corrupt the packet");
